@@ -113,35 +113,6 @@
             box-shadow: 0 0 0 6px rgba(125, 211, 252, 0.15);
         }
 
-        .refresh-control {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px 14px;
-            border-radius: 999px;
-            background: var(--panel);
-            border: 1px solid var(--border);
-            color: var(--muted);
-            font-size: 14px;
-        }
-
-        .refresh-control input {
-            width: 50px;
-            padding: 4px 8px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            color: var(--text);
-            font-family: 'Inter', monospace;
-            font-size: 14px;
-        }
-
-        .refresh-control input:focus {
-            outline: none;
-            border-color: var(--accent);
-            background: rgba(125, 211, 252, 0.1);
-        }
-
         .grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -334,16 +305,8 @@
                 <h1>Ollama Router</h1>
                 <p>Live signal on capacity, health, and rate limits.</p>
             </div>
-            <div style="display: flex; gap: 10px;">
-                <div class="pill">
-                    <span class="dot"></span>
-                    <span id="refresh-status">Auto refresh · 3s</span>
-                </div>
-                <div class="refresh-control">
-                    <span>Refresh every</span>
-                    <input type="number" id="refresh-seconds" min="1" max="60" value="3">
-                    <span>seconds</span>
-                </div>
+            <div class="pill">
+                <span id="refresh-status">Connecting...</span>
             </div>
         </div>
 
@@ -367,9 +330,10 @@
     </div>
 
     <script>
-        const API_URL = 'http://localhost:8000/dashboard';
-        let REFRESH_INTERVAL = 3000;
-        let refreshIntervalId = null;
+        const WS_URL = 'ws://localhost:8000/ws/dashboard';
+        let ws = null;
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT_ATTEMPTS = 5;
         
         // Track previous values to animate from current to new
         let previousValues = {
@@ -402,17 +366,6 @@
             update();
         }
 
-        async function fetchDashboardData() {
-            try {
-                const response = await fetch(API_URL);
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                return await response.json();
-            } catch (error) {
-                console.error('Error fetching dashboard data:', error);
-                return null;
-            }
-        }
-
         function formatTime(seconds) {
             const hours = Math.floor(seconds / 3600);
             const minutes = Math.floor((seconds % 3600) / 60);
@@ -421,24 +374,6 @@
             if (hours > 0) return `${hours}h ${minutes}m`;
             if (minutes > 0) return `${minutes}m ${secs}s`;
             return `${secs}s`;
-        }
-
-        function updateRefreshInterval() {
-            const input = document.getElementById('refresh-seconds');
-            const newInterval = Math.max(1, Math.min(60, parseInt(input.value) || 3)) * 1000;
-            
-            REFRESH_INTERVAL = newInterval;
-            input.value = Math.round(REFRESH_INTERVAL / 1000);
-            
-            // Update display
-            document.getElementById('refresh-status').textContent = `Auto refresh · ${Math.round(REFRESH_INTERVAL / 1000)}s`;
-            
-            // Reset interval
-            if (refreshIntervalId) clearInterval(refreshIntervalId);
-            refreshIntervalId = setInterval(updateDashboard, REFRESH_INTERVAL);
-            
-            // Save preference
-            localStorage.setItem('dashboardRefreshInterval', REFRESH_INTERVAL);
         }
 
         function renderSummary(data) {
@@ -582,60 +517,79 @@
             document.getElementById('last-update').textContent = `${hours}:${minutes}:${seconds}`;
         }
 
-        async function updateDashboard() {
-            const data = await fetchDashboardData();
-            if (data) {
-                // Check if this is the first load
-                const isFirstLoad = Object.keys(previousValues.summary).length === 0;
+        function processDashboardData(data) {
+            // Check if this is the first load
+            const isFirstLoad = Object.keys(previousValues.summary).length === 0;
+            
+            renderSummary(data);
+            renderAccounts(data);
+            updateLastUpdate();
+            
+            // On first load, initialize previous values without animation
+            if (isFirstLoad) {
+                const s = data.summary;
+                previousValues.summary = {
+                    'rate_limited': s.rate_limited_accounts,
+                    'total_requests': s.total_requests,
+                    'total_errors': s.total_errors,
+                    'tokens_uploaded': s.tokens_uploaded,
+                    'tokens_downloaded': s.tokens_downloaded,
+                    'tool_calls': s.tool_calls
+                };
                 
-                renderSummary(data);
-                renderAccounts(data);
-                updateLastUpdate();
-                
-                // On first load, initialize previous values without animation
-                if (isFirstLoad) {
-                    const s = data.summary;
-                    previousValues.summary = {
-                        'rate_limited': s.rate_limited_accounts,
-                        'total_requests': s.total_requests,
-                        'total_errors': s.total_errors,
-                        'tokens_uploaded': s.tokens_uploaded,
-                        'tokens_downloaded': s.tokens_downloaded,
-                        'tool_calls': s.tool_calls
+                data.accounts.forEach(account => {
+                    previousValues.accounts[account.name] = {
+                        requests_made: account.requests_made,
+                        tokens_uploaded: account.tokens_uploaded,
+                        tokens_downloaded: account.tokens_downloaded,
+                        tool_calls: account.tool_calls,
+                        consecutive_errors: account.consecutive_errors
                     };
-                    
-                    data.accounts.forEach(account => {
-                        previousValues.accounts[account.name] = {
-                            requests_made: account.requests_made,
-                            tokens_uploaded: account.tokens_uploaded,
-                            tokens_downloaded: account.tokens_downloaded,
-                            tool_calls: account.tool_calls,
-                            consecutive_errors: account.consecutive_errors
-                        };
-                    });
+                });
+            }
+        }
+
+        function connectWebSocket() {
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = function(event) {
+                console.log('WebSocket connected');
+                document.getElementById('refresh-status').textContent = 'WebSocket connected';
+                reconnectAttempts = 0;
+            };
+
+            ws.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    processDashboardData(data);
+                } catch (error) {
+                    console.error('Error processing WebSocket message:', error);
                 }
-            }
+            };
+
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                document.getElementById('refresh-status').textContent = '⚠️ Connection error';
+            };
+
+            ws.onclose = function(event) {
+                console.log('WebSocket disconnected');
+                document.getElementById('refresh-status').textContent = 'Reconnecting...';
+                
+                // Attempt to reconnect with exponential backoff
+                if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    reconnectAttempts++;
+                    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 30000);
+                    console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
+                    setTimeout(connectWebSocket, delay);
+                } else {
+                    document.getElementById('refresh-status').textContent = '❌ Connection failed';
+                }
+            };
         }
 
-        // Load saved refresh interval or use default
-        const savedInterval = localStorage.getItem('dashboardRefreshInterval');
-        if (savedInterval) {
-            REFRESH_INTERVAL = Math.max(1000, Math.min(60000, parseInt(savedInterval)));
-            document.getElementById('refresh-seconds').value = Math.round(REFRESH_INTERVAL / 1000);
-            document.getElementById('refresh-status').textContent = `Auto refresh · ${Math.round(REFRESH_INTERVAL / 1000)}s`;
-        }
-
-        // Setup refresh interval control
-        const refreshInput = document.getElementById('refresh-seconds');
-        refreshInput.addEventListener('change', updateRefreshInterval);
-        refreshInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                updateRefreshInterval();
-            }
-        });
-
-        updateDashboard();
-        refreshIntervalId = setInterval(updateDashboard, REFRESH_INTERVAL);
+        // Connect WebSocket on page load
+        connectWebSocket();
     </script>
 </body>
 </html>

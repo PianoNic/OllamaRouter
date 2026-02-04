@@ -366,6 +366,39 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# WebSocket connection manager for dashboard updates
+class DashboardConnectionManager:
+    """Manages WebSocket connections for dashboard clients"""
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+    
+    async def connect(self, websocket: WebSocket):
+        """Accept and register a WebSocket connection"""
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        logger.info(f"WebSocket client connected. Total: {len(self.active_connections)}")
+    
+    def disconnect(self, websocket: WebSocket):
+        """Unregister a WebSocket connection"""
+        self.active_connections.remove(websocket)
+        logger.info(f"WebSocket client disconnected. Total: {len(self.active_connections)}")
+    
+    async def broadcast(self, message: dict):
+        """Send a message to all connected clients"""
+        disconnected = []
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception as e:
+                logger.error(f"Error sending WebSocket message: {e}")
+                disconnected.append(connection)
+        
+        # Remove disconnected clients
+        for connection in disconnected:
+            self.disconnect(connection)
+
+dashboard_manager = DashboardConnectionManager()
+
 # Global Ollama manager (will be initialized on startup)
 ollama_manager: Optional[OllamaManager] = None
 
@@ -1195,6 +1228,10 @@ async def dashboard():
     Dashboard endpoint showing usage across all accounts
     Returns aggregated metrics and per-account statistics (from memory + database)
     """
+    return await get_dashboard_data()
+
+async def get_dashboard_data():
+    """Helper function to get dashboard data for both HTTP and WebSocket"""
     if not ollama_manager:
         raise HTTPException(status_code=503, detail="Service not initialized")
     
@@ -1289,6 +1326,46 @@ async def dashboard():
         },
         "accounts": sorted(accounts, key=lambda x: x["usage_percent"], reverse=True),
     }
+
+@app.websocket("/ws/dashboard")
+async def websocket_dashboard(websocket: WebSocket):
+    """
+    WebSocket endpoint for live dashboard updates
+    Only sends metrics when there's actual data change
+    """
+    await dashboard_manager.connect(websocket)
+    last_data_hash = None
+    try:
+        while True:
+            # Get current dashboard data
+            data = await get_dashboard_data()
+            
+            # Create a copy without timestamp and uptime for comparison
+            # (these fields change constantly but don't represent real metric changes)
+            data_for_comparison = {
+                "summary": data["summary"],
+                "accounts": [
+                    {k: v for k, v in acc.items() if k != "uptime_seconds"}
+                    for acc in data["accounts"]
+                ]
+            }
+            
+            # Only send if data changed
+            data_json = json.dumps(data_for_comparison, sort_keys=True, default=str)
+            data_hash = hashlib.md5(data_json.encode()).hexdigest()
+            
+            if data_hash != last_data_hash:
+                await websocket.send_json(data)
+                last_data_hash = data_hash
+            
+            # Check for changes every 0.5 seconds
+            await asyncio.sleep(0.5)
+    except WebSocketDisconnect:
+        dashboard_manager.disconnect(websocket)
+        logger.info("WebSocket client disconnected")
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        dashboard_manager.disconnect(websocket)
 
 
 if __name__ == "__main__":
