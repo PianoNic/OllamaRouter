@@ -4,6 +4,9 @@ Load-balanced Ollama Cloud router with Anthropic API compatibility.
 
 ---
 
+<img width="1866" height="912" alt="image" src="https://github.com/user-attachments/assets/5c57cf31-f8fd-417e-a2ec-ffd5bb11b79c" />
+
+
 ## Setup
 
 Create `apikeys.txt`:
