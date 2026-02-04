@@ -1,0 +1,28 @@
+services:
+  ollama-router:
+    build: .
+    container_name: ollama-router
+    ports:
+      - "8000:8000"
+    environment:
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8000
+      - ANTHROPIC_AUTH_TOKEN=ollama
+      - ANTHROPIC_BASE_URL=http://localhost:8000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    volumes:
+      - ./apikeys.txt:/app/apikeys.txt:ro
+      - ./logs:/app/logs
+      - ./data:/app/data
+    networks:
+      - router-network
+
+networks:
+  router-network:
+    driver: bridge

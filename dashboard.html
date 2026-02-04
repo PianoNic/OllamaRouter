@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ollama Router Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0b1021;
+            --panel: #0f172a;
+            --panel-2: #11182f;
+            --text: #e2e8f0;
+            --muted: #94a3b8;
+            --accent: #7dd3fc;
+            --success: #34d399;
+            --warn: #fbbf24;
+            --danger: #f87171;
+            --border: rgba(255, 255, 255, 0.08);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        /* Custom scrollbar styles */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--accent);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #38bdf8;
+        }
+
+        /* Firefox scrollbar */
+        * {
+            scrollbar-color: var(--accent) transparent;
+            scrollbar-width: thin;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: radial-gradient(circle at 20% 20%, rgba(125, 211, 252, 0.08), transparent 30%),
+                        radial-gradient(circle at 80% 0%, rgba(52, 211, 153, 0.06), transparent 35%),
+                        var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            height: 100vh;
+            padding: 12px 12px 16px;
+            line-height: 1.5;
+            overflow: hidden;
+        }
+
+        .shell {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-rows: auto auto 1fr auto;
+            gap: 12px;
+            height: 100%;
+        }
+
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .title-block h1 {
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+
+        .title-block p {
+            color: var(--muted);
+            margin-top: 4px;
+            font-weight: 500;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            border-radius: 999px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .pill .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 0 6px rgba(125, 211, 252, 0.15);
+        }
+
+        .refresh-control {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border-radius: 999px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .refresh-control input {
+            width: 50px;
+            padding: 4px 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-family: 'Inter', monospace;
+            font-size: 14px;
+        }
+
+        .refresh-control input:focus {
+            outline: none;
+            border-color: var(--accent);
+            background: rgba(125, 211, 252, 0.1);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            grid-auto-rows: 110px;
+            gap: 10px;
+        }
+
+        .card {
+            background: linear-gradient(145deg, var(--panel), var(--panel-2));
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 14px 16px;
+            box-shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
+        }
+
+        .card-label {
+            color: var(--muted);
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 10px;
+        }
+
+        .card-value {
+            font-size: clamp(22px, 2.2vw, 26px);
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            line-height: 1.1;
+            word-break: keep-all;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .health-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 10px;
+            font-weight: 600;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .health-healthy { color: var(--success); }
+        .health-degraded { color: var(--warn); }
+        .health-limited { color: var(--danger); }
+
+        .section {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-height: 0;
+            flex: 1;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+        }
+
+        .section-sub {
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .accounts {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 10px;
+            overflow-y: auto;
+            padding-right: 4px;
+            min-height: 0;
+            flex: 1;
+        }
+
+        .account-card {
+            background: linear-gradient(145deg, var(--panel), var(--panel-2));
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .account-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .account-name {
+            font-weight: 700;
+            font-size: 15px;
+            letter-spacing: -0.01em;
+        }
+
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .status .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .status.healthy .dot { background: var(--success); }
+        .status.limited .dot { background: var(--danger); }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .stat-row span:last-child {
+            color: var(--text);
+            font-weight: 600;
+        }
+
+        .bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), #38bdf8);
+            border-radius: 999px;
+            transition: width 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .error {
+            border-left: 3px solid var(--danger);
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: rgba(248, 113, 113, 0.08);
+            color: #fecdd3;
+            font-size: 13px;
+        }
+
+        .footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: var(--muted);
+            font-size: 13px;
+            margin-top: 6px;
+            padding-top: 4px;
+            border-top: 1px solid var(--border);
+        }
+
+        @media (max-width: 640px) {
+            body { padding: 16px 14px 18px; }
+            .shell { grid-template-rows: auto auto 1fr auto; }
+            .topbar { flex-direction: column; align-items: flex-start; }
+            .footer { flex-direction: column; align-items: flex-start; gap: 6px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <div class="topbar">
+            <div class="title-block">
+                <h1>Ollama Router</h1>
+                <p>Live signal on capacity, health, and rate limits.</p>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <div class="pill">
+                    <span class="dot"></span>
+                    <span id="refresh-status">Auto refresh · 3s</span>
+                </div>
+                <div class="refresh-control">
+                    <span>Refresh every</span>
+                    <input type="number" id="refresh-seconds" min="1" max="60" value="3">
+                    <span>seconds</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid" id="summary-grid"></div>
+
+        <div class="section">
+            <div class="section-header">
+                <div>
+                    <div class="section-title">Accounts</div>
+                    <div class="section-sub">Usage by provider with rate-limit signals.</div>
+                </div>
+                <div class="health-chip health-healthy" id="overall-health"></div>
+            </div>
+            <div class="accounts" id="accounts-grid"></div>
+        </div>
+
+        <div class="footer">
+            <span>Last update: <span id="last-update">--:--:--</span></span>
+            <span id="footer-health" class="section-sub"></span>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000/dashboard';
+        let REFRESH_INTERVAL = 3000;
+        let refreshIntervalId = null;
+        
+        // Track previous values to animate from current to new
+        let previousValues = {
+            summary: {},
+            accounts: {}
+        };
+
+        // Custom animation function - counts up numbers smoothly
+        function animateValue(element, startValue, endValue, duration = 600) {
+            if (!element || typeof endValue !== 'number') return;
+            
+            const startTime = Date.now();
+            const range = endValue - startValue;
+            
+            function update() {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // Easing function - slows down at the end (cubic ease-out)
+                const easeProgress = 1 - Math.pow(1 - progress, 3);
+                
+                const currentValue = Math.round(startValue + range * easeProgress);
+                element.textContent = currentValue.toLocaleString();
+                
+                if (progress < 1) {
+                    requestAnimationFrame(update);
+                }
+            }
+            
+            update();
+        }
+
+        async function fetchDashboardData() {
+            try {
+                const response = await fetch(API_URL);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return await response.json();
+            } catch (error) {
+                console.error('Error fetching dashboard data:', error);
+                return null;
+            }
+        }
+
+        function formatTime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+
+            if (hours > 0) return `${hours}h ${minutes}m`;
+            if (minutes > 0) return `${minutes}m ${secs}s`;
+            return `${secs}s`;
+        }
+
+        function updateRefreshInterval() {
+            const input = document.getElementById('refresh-seconds');
+            const newInterval = Math.max(1, Math.min(60, parseInt(input.value) || 3)) * 1000;
+            
+            REFRESH_INTERVAL = newInterval;
+            input.value = Math.round(REFRESH_INTERVAL / 1000);
+            
+            // Update display
+            document.getElementById('refresh-status').textContent = `Auto refresh · ${Math.round(REFRESH_INTERVAL / 1000)}s`;
+            
+            // Reset interval
+            if (refreshIntervalId) clearInterval(refreshIntervalId);
+            refreshIntervalId = setInterval(updateDashboard, REFRESH_INTERVAL);
+            
+            // Save preference
+            localStorage.setItem('dashboardRefreshInterval', REFRESH_INTERVAL);
+        }
+
+        function renderSummary(data) {
+            const summaryGrid = document.getElementById('summary-grid');
+            const s = data.summary;
+
+            const cards = [
+                { label: 'Healthy Accounts', value: `${s.healthy_accounts}/${s.total_accounts}`, isNumeric: false, className: 'health-healthy' },
+                { label: 'Rate Limited', value: s.rate_limited_accounts, isNumeric: true, key: 'rate_limited', className: s.rate_limited_accounts > 0 ? 'health-limited' : 'health-healthy' },
+                { label: 'Total Capacity', value: s.estimated_total_capacity, isNumeric: false, className: 'health-healthy' },
+                { label: 'Total Requests', value: s.total_requests, isNumeric: true, key: 'total_requests', className: 'health-healthy' },
+                { label: 'Total Errors', value: s.total_errors, isNumeric: true, key: 'total_errors', className: s.total_errors > 0 ? 'health-limited' : 'health-healthy' },
+                { label: 'Tokens Uploaded', value: s.tokens_uploaded, isNumeric: true, key: 'tokens_uploaded', className: 'health-healthy' },
+                { label: 'Tokens Downloaded', value: s.tokens_downloaded, isNumeric: true, key: 'tokens_downloaded', className: 'health-healthy' },
+                { label: 'Tool Calls', value: s.tool_calls, isNumeric: true, key: 'tool_calls', className: 'health-healthy' },
+            ];
+
+            summaryGrid.innerHTML = cards.map((card, idx) => `
+                <div class="card">
+                    <div class="card-label">${card.label}</div>
+                    <div class="card-value ${card.className}" id="card-value-${idx}">${card.isNumeric ? (previousValues.summary[card.key] || 0) : card.value}</div>
+                </div>
+            `).join('');
+
+            // Animate numeric values from previous to current
+            cards.forEach((card, idx) => {
+                if (card.isNumeric && typeof card.value === 'number') {
+                    const element = document.getElementById(`card-value-${idx}`);
+                    const prevValue = previousValues.summary[card.key] || 0;
+                    animateValue(element, prevValue, card.value, 600);
+                    previousValues.summary[card.key] = card.value;
+                } else {
+                    const element = document.getElementById(`card-value-${idx}`);
+                    if (element) element.textContent = card.value;
+                }
+            });
+
+            const overall = document.getElementById('overall-health');
+            overall.className = `health-chip health-healthy`;
+            overall.textContent = `${s.healthy_accounts} Healthy`;
+
+            document.getElementById('footer-health').textContent = `${s.healthy_accounts} healthy · ${s.rate_limited_accounts} rate-limited · ${s.tokens_uploaded} ↑ · ${s.tokens_downloaded} ↓ · ${s.tool_calls} 🔧`;
+        }
+
+        function renderAccounts(data) {
+            const accountsGrid = document.getElementById('accounts-grid');
+            accountsGrid.innerHTML = data.accounts.map((account, idx) => {
+                // Get previous values for this account
+                if (!previousValues.accounts[account.name]) {
+                    previousValues.accounts[account.name] = {
+                        requests_made: 0,
+                        tokens_uploaded: 0,
+                        tokens_downloaded: 0,
+                        tool_calls: 0,
+                        consecutive_errors: 0
+                    };
+                }
+                const prev = previousValues.accounts[account.name];
+                
+                return `
+                <div class="account-card">
+                    <div class="account-head">
+                        <div class="account-name">${account.name}</div>
+                        <div class="status ${account.is_rate_limited ? 'limited' : 'healthy'}">
+                            <span class="dot"></span>
+                            <span>${account.is_rate_limited ? 'Rate Limited' : 'Healthy'}</span>
+                        </div>
+                    </div>
+                    <div class="stat-row">
+                        <span>Usage</span>
+                        <span id="usage-${idx}">${account.usage_percent.toFixed(1)}%</span>
+                    </div>
+                    <div class="bar"><div class="bar-fill" id="bar-${idx}" style="width: ${account.usage_percent}%"></div></div>
+                    <div class="stat-row">
+                        <span>Requests</span>
+                        <span id="requests-${idx}">${prev.requests_made}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>↑ Tokens</span>
+                        <span id="tokens-up-${idx}">${prev.tokens_uploaded}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>↓ Tokens</span>
+                        <span id="tokens-down-${idx}">${prev.tokens_downloaded}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Tool Calls</span>
+                        <span id="tool-calls-${idx}">${prev.tool_calls}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Errors</span>
+                        <span id="errors-${idx}">${prev.consecutive_errors}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Uptime</span>
+                        <span>${formatTime(account.uptime_seconds)}</span>
+                    </div>
+                    ${account.last_error && account.last_error !== 'rate_limit' ? `<div class="error">${account.last_error}</div>` : ''}
+                </div>
+            `;
+            }).join('');
+
+            // Animate account stat values
+            data.accounts.forEach((account, idx) => {
+                const prev = previousValues.accounts[account.name];
+                
+                animateValue(document.getElementById(`requests-${idx}`), prev.requests_made, account.requests_made, 600);
+                animateValue(document.getElementById(`tokens-up-${idx}`), prev.tokens_uploaded, account.tokens_uploaded, 600);
+                animateValue(document.getElementById(`tokens-down-${idx}`), prev.tokens_downloaded, account.tokens_downloaded, 600);
+                animateValue(document.getElementById(`tool-calls-${idx}`), prev.tool_calls, account.tool_calls, 600);
+                animateValue(document.getElementById(`errors-${idx}`), prev.consecutive_errors, account.consecutive_errors, 600);
+
+                // Animate usage bar
+                const barElement = document.getElementById(`bar-${idx}`);
+                if (barElement) {
+                    barElement.style.width = account.usage_percent + '%';
+                }
+
+                // Update usage percentage
+                const usageElement = document.getElementById(`usage-${idx}`);
+                if (usageElement) {
+                    usageElement.textContent = account.usage_percent.toFixed(1) + '%';
+                }
+                
+                // Store current values for next refresh
+                previousValues.accounts[account.name] = {
+                    requests_made: account.requests_made,
+                    tokens_uploaded: account.tokens_uploaded,
+                    tokens_downloaded: account.tokens_downloaded,
+                    tool_calls: account.tool_calls,
+                    consecutive_errors: account.consecutive_errors
+                };
+            });
+        }
+
+        function updateLastUpdate() {
+            const now = new Date();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            document.getElementById('last-update').textContent = `${hours}:${minutes}:${seconds}`;
+        }
+
+        async function updateDashboard() {
+            const data = await fetchDashboardData();
+            if (data) {
+                // Check if this is the first load
+                const isFirstLoad = Object.keys(previousValues.summary).length === 0;
+                
+                renderSummary(data);
+                renderAccounts(data);
+                updateLastUpdate();
+                
+                // On first load, initialize previous values without animation
+                if (isFirstLoad) {
+                    const s = data.summary;
+                    previousValues.summary = {
+                        'rate_limited': s.rate_limited_accounts,
+                        'total_requests': s.total_requests,
+                        'total_errors': s.total_errors,
+                        'tokens_uploaded': s.tokens_uploaded,
+                        'tokens_downloaded': s.tokens_downloaded,
+                        'tool_calls': s.tool_calls
+                    };
+                    
+                    data.accounts.forEach(account => {
+                        previousValues.accounts[account.name] = {
+                            requests_made: account.requests_made,
+                            tokens_uploaded: account.tokens_uploaded,
+                            tokens_downloaded: account.tokens_downloaded,
+                            tool_calls: account.tool_calls,
+                            consecutive_errors: account.consecutive_errors
+                        };
+                    });
+                }
+            }
+        }
+
+        // Load saved refresh interval or use default
+        const savedInterval = localStorage.getItem('dashboardRefreshInterval');
+        if (savedInterval) {
+            REFRESH_INTERVAL = Math.max(1000, Math.min(60000, parseInt(savedInterval)));
+            document.getElementById('refresh-seconds').value = Math.round(REFRESH_INTERVAL / 1000);
+            document.getElementById('refresh-status').textContent = `Auto refresh · ${Math.round(REFRESH_INTERVAL / 1000)}s`;
+        }
+
+        // Setup refresh interval control
+        const refreshInput = document.getElementById('refresh-seconds');
+        refreshInput.addEventListener('change', updateRefreshInterval);
+        refreshInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                updateRefreshInterval();
+            }
+        });
+
+        updateDashboard();
+        refreshIntervalId = setInterval(updateDashboard, REFRESH_INTERVAL);
+    </script>
+</body>
+</html>
