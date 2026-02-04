@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(tree:*)",
+      "Bash(find:*)",
+      "Bash(ng generate:*)",
+      "Bash(grep:*)",
+      "Bash(bun add:*)",
+      "WebSearch"
+    ],
+    "deny": [],
+    "ask": []
+  },
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://localhost:8000",
+    "ANTHROPIC_AUTH_TOKEN": "ollama"
+  }
+}

@@ -13,7 +13,7 @@ import hashlib
 from typing import Optional, Dict, List, Any
 from datetime import datetime, timedelta
 
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 import httpx
@@ -68,11 +68,17 @@ os.makedirs('/app/data', exist_ok=True)
 db = SqliteDatabase('/app/data/ollama_metrics.db')
 
 class TokenMetrics(Model):
-    """Tracks token usage per account"""
-    account_name = CharField()
+    """Tracks comprehensive metrics per account"""
+    account_name = CharField(unique=True)
     tokens_uploaded = IntegerField(default=0)
     tokens_downloaded = IntegerField(default=0)
-    timestamp = DateTimeField(default=datetime.now)
+    requests_made = IntegerField(default=0)
+    tool_calls = IntegerField(default=0)
+    rate_limit_count = IntegerField(default=0)
+    last_error = CharField(default="")
+    is_rate_limited = BooleanField(default=False)
+    created_at = DateTimeField(default=datetime.now)
+    updated_at = DateTimeField(default=datetime.now)
     
     class Meta:
         database = db
@@ -296,6 +302,17 @@ class OllamaManager:
                 metrics.consecutive_errors += 1
                 metrics.last_error = error_msg
                 logger.warning(f"Instance {instance_name} marked as rate limited (errors: {metrics.consecutive_errors})")
+                
+                # Persist to database
+                db_record, created = TokenMetrics.get_or_create(
+                    account_name=instance_name,
+                    defaults={"created_at": datetime.now()}
+                )
+                db_record.is_rate_limited = True
+                db_record.rate_limit_count += 1
+                db_record.last_error = error_msg
+                db_record.updated_at = datetime.now()
+                db_record.save()
             
             # Switch to next instance
             self.current_instance_index = (self.current_instance_index + 1) % len(self.instances)
@@ -313,10 +330,15 @@ class OllamaManager:
             # Persist to database
             db_record, created = TokenMetrics.get_or_create(
                 account_name=instance_name,
+                defaults={"created_at": datetime.now()}
             )
             db_record.tokens_uploaded += tokens_up
             db_record.tokens_downloaded += tokens_down
-            db_record.timestamp = datetime.now()
+            db_record.requests_made += 1
+            db_record.tool_calls += tool_calls_count
+            db_record.is_rate_limited = metrics.is_rate_limited
+            db_record.last_error = metrics.last_error or ""
+            db_record.updated_at = datetime.now()
             db_record.save()
     
     def get_metrics(self) -> Dict[str, dict]:
@@ -1171,7 +1193,7 @@ async def get_instance_metrics(instance_name: str):
 async def dashboard():
     """
     Dashboard endpoint showing usage across all accounts
-    Returns aggregated metrics and per-account statistics
+    Returns aggregated metrics and per-account statistics (from memory + database)
     """
     if not ollama_manager:
         raise HTTPException(status_code=503, detail="Service not initialized")
@@ -1188,38 +1210,61 @@ async def dashboard():
     accounts = []
     for instance in ollama_manager.instances:
         metrics = ollama_manager.metrics[instance.name]
-        total_requests += metrics.requests_made
-        total_tokens_uploaded += metrics.tokens_uploaded
-        total_tokens_downloaded += metrics.tokens_downloaded
-        total_tool_calls += metrics.tool_calls
-        total_errors += metrics.consecutive_errors
         
-        if metrics.is_rate_limited:
+        # Load persisted data from database
+        try:
+            db_metrics = TokenMetrics.get(TokenMetrics.account_name == instance.name)
+            # Use database values if available and newer (more complete history)
+            requests_made = db_metrics.requests_made + (metrics.requests_made if metrics.requests_made > db_metrics.requests_made else 0)
+            tokens_uploaded = db_metrics.tokens_uploaded
+            tokens_downloaded = db_metrics.tokens_downloaded
+            tool_calls = db_metrics.tool_calls
+            rate_limited = db_metrics.is_rate_limited
+            last_error = db_metrics.last_error
+            rate_limit_count_db = db_metrics.rate_limit_count
+            created_at = db_metrics.created_at
+        except:
+            # Fallback to in-memory metrics if no database entry
+            requests_made = metrics.requests_made
+            tokens_uploaded = metrics.tokens_uploaded
+            tokens_downloaded = metrics.tokens_downloaded
+            tool_calls = metrics.tool_calls
+            rate_limited = metrics.is_rate_limited
+            last_error = metrics.last_error
+            rate_limit_count_db = metrics.consecutive_errors
+            created_at = metrics.created_at
+        
+        total_requests += requests_made
+        total_tokens_uploaded += tokens_uploaded
+        total_tokens_downloaded += tokens_downloaded
+        total_tool_calls += tool_calls
+        total_errors += rate_limit_count_db
+        
+        if rate_limited:
             rate_limited_count += 1
         else:
             healthy_count += 1
         
         # Estimate usage percentage based on rate limiting status
-        # Rate limited = ~100%, recently recovered = ~80%+, healthy = <50%
-        if metrics.is_rate_limited:
+        if rate_limited:
             usage_percent = 100
-        elif metrics.consecutive_errors > 0:
+        elif rate_limit_count_db > 0:
             usage_percent = 80
         else:
-            usage_percent = min(50, (metrics.requests_made / 10))  # Rough estimate
+            usage_percent = min(50, (requests_made / 10))  # Rough estimate
         
         accounts.append({
             "name": instance.name,
-            "requests_made": metrics.requests_made,
-            "tokens_uploaded": metrics.tokens_uploaded,
-            "tokens_downloaded": metrics.tokens_downloaded,
-            "tool_calls": metrics.tool_calls,
-            "is_rate_limited": metrics.is_rate_limited,
+            "requests_made": requests_made,
+            "tokens_uploaded": tokens_uploaded,
+            "tokens_downloaded": tokens_downloaded,
+            "tool_calls": tool_calls,
+            "is_rate_limited": rate_limited,
             "usage_percent": usage_percent,
-            "consecutive_errors": metrics.consecutive_errors,
-            "last_error": metrics.last_error,
+            "consecutive_errors": rate_limit_count_db,
+            "last_error": last_error,
             "last_rate_limit": metrics.last_rate_limit_time.isoformat() if metrics.last_rate_limit_time else None,
-            "uptime_seconds": (datetime.now() - metrics.created_at).total_seconds(),
+            "uptime_seconds": (datetime.now() - created_at).total_seconds(),
         })
     
     # Calculate totals
