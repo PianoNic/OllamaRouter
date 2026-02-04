@@ -330,7 +330,8 @@
     </div>
 
     <script>
-        const WS_URL = `ws://${window.location.host}/ws/dashboard`;
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const WS_URL = `${protocol}//${window.location.host}/ws/dashboard`;
         let ws = null;
         let reconnectAttempts = 0;
         const MAX_RECONNECT_ATTEMPTS = 5;
