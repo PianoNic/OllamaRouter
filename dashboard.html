@@ -330,7 +330,7 @@
     </div>
 
     <script>
-        const WS_URL = 'ws://localhost:8000/ws/dashboard';
+        const WS_URL = `ws://${window.location.host}/ws/dashboard`;
         let ws = null;
         let reconnectAttempts = 0;
         const MAX_RECONNECT_ATTEMPTS = 5;
