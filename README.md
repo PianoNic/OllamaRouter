@@ -79,13 +79,13 @@ Use one of the launcher scripts in `scripts/` — they set the env vars and forw
 
 ```bash
 # macOS / Linux
-./scripts/claude.sh
+./scripts/start-claude.sh
 
 # Windows (PowerShell)
-.\scripts\claude.ps1
+.\scripts\start-claude.ps1
 
 # Windows (cmd)
-scripts\claude.cmd
+scripts\start-claude.cmd
 ```
 
 Override the router URL with `ROUTER_URL` if it isn't on `http://localhost:8000`.
