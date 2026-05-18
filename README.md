@@ -75,6 +75,23 @@ Full reference and code examples: [`USAGE.md`](USAGE.md), or the **Docs** tab in
 
 ### Claude Code
 
+Use one of the launcher scripts in `scripts/` — they set the env vars and forward all arguments to `claude`:
+
+```bash
+# macOS / Linux
+./scripts/claude.sh
+
+# Windows (PowerShell)
+.\scripts\claude.ps1
+
+# Windows (cmd)
+scripts\claude.cmd
+```
+
+Override the router URL with `ROUTER_URL` if it isn't on `http://localhost:8000`.
+
+Or set the env vars manually:
+
 ```bash
 export ANTHROPIC_BASE_URL=http://localhost:8000
 export ANTHROPIC_AUTH_TOKEN=anything
