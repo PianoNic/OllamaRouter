@@ -6,22 +6,52 @@ Multi-account router for Ollama Cloud. Aggregates several API keys, rotates on r
 
 ---
 
-## Setup
+## Quick start
 
-Create `apikeys.txt` (one key per line):
+### 1. Add your API keys
+
+Create `apikeys.txt` next to `compose.yml`, one Ollama Cloud key per line:
 
 ```
 olm_key1...
 olm_key2...
 ```
 
-Start:
+Get keys from <https://ollama.com/settings/keys>.
+
+### 2. Start with Docker Compose
+
+**Option A — pull the pre-built image from GitHub Container Registry:**
+
+```yaml
+# compose.yml
+services:
+  ollama-router:
+    image: ghcr.io/pianonic/ollamarouter:latest
+    container_name: ollama-router
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./apikeys.txt:/app/apikeys.txt:ro
+      - ./data:/app/data
+    restart: unless-stopped
+```
 
 ```bash
+docker compose up -d
+```
+
+**Option B — build from source:**
+
+```bash
+git clone https://github.com/PianoNic/OllamaRouter.git
+cd OllamaRouter
 docker compose up -d --build
 ```
 
-Open [http://localhost:8000](http://localhost:8000).
+### 3. Open the dashboard
+
+<http://localhost:8000>
 
 ---
 
@@ -29,13 +59,13 @@ Open [http://localhost:8000](http://localhost:8000).
 
 The router exposes the same surface as Ollama itself, the OpenAI REST shape, and Anthropic's Messages API. The Anthropic path is forwarded straight to Ollama's own `/v1/messages` (added in Ollama v0.14) — no translation in between.
 
-| Surface          | Paths                                                       |
-| ---------------- | ----------------------------------------------------------- |
-| Ollama-native    | `/api/chat`, `/api/generate`, `/api/tags`                   |
-| OpenAI-compatible | `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/models` |
-| Anthropic-compatible | `/v1/messages`, `/v1/messages/count_tokens`            |
-| Admin            | `/`, `/dashboard`, `/health`, `/metrics`, `/instances`, `/ws/dashboard` |
-| OpenAPI          | `/docs`, `/redoc`, `/openapi.json`                          |
+| Surface              | Paths                                                                       |
+| -------------------- | --------------------------------------------------------------------------- |
+| Ollama-native        | `/api/chat`, `/api/generate`, `/api/tags`                                   |
+| OpenAI-compatible    | `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/models`   |
+| Anthropic-compatible | `/v1/messages`, `/v1/messages/count_tokens`                                 |
+| Admin                | `/`, `/dashboard`, `/health`, `/metrics`, `/instances`, `/ws/dashboard`     |
+| OpenAPI              | `/docs`, `/redoc`, `/openapi.json`                                          |
 
 Full reference and code examples: [`USAGE.md`](USAGE.md), or the **Docs** tab in the dashboard.
 
@@ -74,17 +104,24 @@ resp = client.chat.completions.create(
 
 ## Configuration
 
-Set via env vars (see `compose.yml`):
+Override via env vars in `compose.yml` (all optional):
 
-| Var                           | Default          |
-| ----------------------------- | ---------------- |
-| `DEFAULT_MODEL`               | `glm-4.7:cloud`  |
-| `RATE_LIMIT_COOLDOWN_SECONDS` | `30`             |
-| `HTTP_TIMEOUT_SECONDS`        | `300`            |
-| `APIKEYS_FILE`                | `/app/apikeys.txt` |
-| `DATA_DIR`                    | `/app/data`      |
+| Var                           | Default            | Purpose                                          |
+| ----------------------------- | ------------------ | ------------------------------------------------ |
+| `DEFAULT_MODEL`               | `glm-4.7:cloud`    | Fallback when client sends a Claude model name   |
+| `RATE_LIMIT_COOLDOWN_SECONDS` | `30`               | How long a rate-limited account stays out of rotation |
+| `HTTP_TIMEOUT_SECONDS`        | `300`              | Upstream request timeout                         |
+| `APIKEYS_FILE`                | `/app/apikeys.txt` | Path inside the container                        |
+| `DATA_DIR`                    | `/app/data`        | Sqlite DB location                               |
+| `SERVER_PORT`                 | `8000`             | uvicorn bind port                                |
 
 ---
+
+## Updating
+
+```bash
+docker compose pull && docker compose up -d
+```
 
 ## Stop
 
