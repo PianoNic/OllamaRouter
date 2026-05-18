@@ -7,6 +7,10 @@ services:
     environment:
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8000
+      - DATA_DIR=/app/data
+      - APIKEYS_FILE=/app/apikeys.txt
+      - FRONTEND_DIST=/app/frontend/dist
+      - RATE_LIMIT_COOLDOWN_SECONDS=30
       - ANTHROPIC_AUTH_TOKEN=ollama
       - ANTHROPIC_BASE_URL=http://localhost:8000
     restart: unless-stopped

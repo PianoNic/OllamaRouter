@@ -34,6 +34,10 @@ ENV/
 env/
 .venv
 
+# Node
+node_modules/
+frontend/.vite/
+
 # IDE
 .vscode/
 .idea/

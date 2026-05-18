@@ -1,15 +1,14 @@
 # Ollama Router
 
-Load-balanced Ollama Cloud router with Anthropic API compatibility.
+Multi-account router for Ollama Cloud. Aggregates several API keys, rotates on rate-limits, and exposes three API surfaces (Ollama-native, OpenAI-compatible, Anthropic-compatible) plus a live dashboard.
+
+![Dashboard](docs/dashboard.png)
 
 ---
 
-<img width="1866" height="912" alt="image" src="https://github.com/user-attachments/assets/5c57cf31-f8fd-417e-a2ec-ffd5bb11b79c" />
-
-
 ## Setup
 
-Create `apikeys.txt`:
+Create `apikeys.txt` (one key per line):
 
 ```
 olm_key1...
@@ -22,64 +21,68 @@ Start:
 docker compose up -d --build
 ```
 
-Router → [http://localhost:8000](http://localhost:8000)
-Dashboard → [http://localhost:8000/dashboard](http://localhost:8000/dashboard)
+Open [http://localhost:8000](http://localhost:8000).
 
 ---
 
-## Claude Code Config
+## Endpoints
 
-`.claude-code`
+The router exposes the same surface as Ollama itself, the OpenAI REST shape, and Anthropic's Messages API. The Anthropic path is forwarded straight to Ollama's own `/v1/messages` (added in Ollama v0.14) — no translation in between.
 
-```json
-{
-  "env": {
-    "ANTHROPIC_BASE_URL": "http://localhost:8000",
-    "ANTHROPIC_AUTH_TOKEN": "ollama"
-  }
-}
+| Surface          | Paths                                                       |
+| ---------------- | ----------------------------------------------------------- |
+| Ollama-native    | `/api/chat`, `/api/generate`, `/api/tags`                   |
+| OpenAI-compatible | `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/models` |
+| Anthropic-compatible | `/v1/messages`, `/v1/messages/count_tokens`            |
+| Admin            | `/`, `/dashboard`, `/health`, `/metrics`, `/instances`, `/ws/dashboard` |
+| OpenAPI          | `/docs`, `/redoc`, `/openapi.json`                          |
+
+Full reference and code examples: [`USAGE.md`](USAGE.md), or the **Docs** tab in the dashboard.
+
+---
+
+## Clients
+
+### Claude Code
+
+```bash
+export ANTHROPIC_BASE_URL=http://localhost:8000
+export ANTHROPIC_AUTH_TOKEN=anything
+claude
 ```
 
----
+### `ollama` CLI
 
-## Example (Python)
+```bash
+export OLLAMA_HOST=http://localhost:8000
+ollama run glm-4.7:cloud "hello"
+```
+
+### OpenAI SDK
 
 ```python
-import anthropic
+from openai import OpenAI
 
-client = anthropic.Anthropic(
-    api_key="ollama",
-    base_url="http://localhost:8000"
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="anything")
+resp = client.chat.completions.create(
+    model="glm-4.7:cloud",
+    messages=[{"role": "user", "content": "hello"}],
 )
-
-r = client.messages.create(
-    model="claude-3-5-sonnet",
-    max_tokens=1024,
-    messages=[{"role":"user","content":"hello"}]
-)
-
-print(r.content[0].text)
 ```
 
 ---
 
-## API
+## Configuration
 
-```
-POST /v1/messages
-GET  /health
-GET  /dashboard
-```
+Set via env vars (see `compose.yml`):
 
----
-
-## Change Model
-
-Edit in `main.py`:
-
-```python
-DEFAULT_MODEL = "minimax-m2.1:cloud"
-```
+| Var                           | Default          |
+| ----------------------------- | ---------------- |
+| `DEFAULT_MODEL`               | `glm-4.7:cloud`  |
+| `RATE_LIMIT_COOLDOWN_SECONDS` | `30`             |
+| `HTTP_TIMEOUT_SECONDS`        | `300`            |
+| `APIKEYS_FILE`                | `/app/apikeys.txt` |
+| `DATA_DIR`                    | `/app/data`      |
 
 ---
 

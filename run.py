@@ -1,44 +1,26 @@
 #!/usr/bin/env python3
-"""
-Script to start the Claude API Router
-"""
+"""Local dev launcher with autoreload."""
 
-import os
-import sys
-from pathlib import Path
+from __future__ import annotations
 
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent))
-
-from main import app
 import uvicorn
 
+from app.infrastructure.settings import Settings
 
-def main():
-    """Start the server"""
-    host = os.getenv("SERVER_HOST", "0.0.0.0")
-    port = int(os.getenv("SERVER_PORT", "8000"))
-    
+
+def main() -> None:
+    settings = Settings.from_env()
     print("=" * 60)
-    print("Claude Code API Router")
+    print("Ollama API Router")
     print("=" * 60)
-    print(f"Starting server on {host}:{port}")
-    print()
-    print("Endpoints:")
-    print(f"  Health Check:    GET  http://{host}:{port}/health")
-    print(f"  Messages:        POST http://{host}:{port}/v1/messages")
-    print(f"  Streaming:       POST http://{host}:{port}/v1/messages/stream")
-    print(f"  Metrics:         GET  http://{host}:{port}/metrics")
-    print(f"  Accounts:        GET  http://{host}:{port}/accounts")
-    print()
-    print("Press Ctrl+C to stop")
+    print(f"Listening on {settings.server_host}:{settings.server_port}")
+    print(f"Data dir:    {settings.data_dir}")
+    print(f"API keys:    {settings.apikeys_file}")
     print("=" * 60)
-    print()
-    
     uvicorn.run(
         "main:app",
-        host=host,
-        port=port,
+        host=settings.server_host,
+        port=settings.server_port,
         reload=True,
         log_level="info",
     )
