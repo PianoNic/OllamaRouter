@@ -1,6 +1,6 @@
 @echo off
 rem Launch Claude Code routed through Ollama Router.
-rem Usage:   scripts\claude.cmd [claude args...]
+rem Usage:   scripts\start-claude.cmd [claude args...]
 rem Env:     ROUTER_URL   (default: http://localhost:8000)
 rem          ROUTER_TOKEN (default: ollama)
 

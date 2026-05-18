@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 # Launch Claude Code routed through Ollama Router.
-# Usage:   ./scripts/claude.sh [claude args...]
+# Usage:   ./scripts/start-claude.sh [claude args...]
 # Env:     ROUTER_URL  (default: http://localhost:8000)
 #          ROUTER_TOKEN (default: ollama)
 

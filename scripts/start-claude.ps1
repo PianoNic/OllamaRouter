@@ -1,5 +1,5 @@
 # Launch Claude Code routed through Ollama Router.
-# Usage:   .\scripts\claude.ps1 [claude args...]
+# Usage:   .\scripts\start-claude.ps1 [claude args...]
 # Env:     $env:ROUTER_URL   (default: http://localhost:8000)
 #          $env:ROUTER_TOKEN (default: ollama)
 
